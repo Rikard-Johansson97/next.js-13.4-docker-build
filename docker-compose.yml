@@ -10,6 +10,7 @@ services:
     environment:
       - NODE_ENV=development
       - WATCHPACK_POLLING=true
+      - NEXTAUTH_SECRET=mQ46qpFwfE1BHuqMC+qlm19qBAD9fVPgh28werwe3ASFlAfnKjM=
     volumes:
       - .:/app
       - /app/node_modules
