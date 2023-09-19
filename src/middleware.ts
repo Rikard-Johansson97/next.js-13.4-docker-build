@@ -1,27 +1,59 @@
-import { NextRequest } from "next/server";
 import { withAuth } from "next-auth/middleware";
+import { NextRequest, NextResponse } from "next/server";
 import createIntlMiddleware from "next-intl/middleware";
 
 const locales = ["en", "de"];
-const publicPages = [
-  "/",
-  "/login",
-  // (/secret requires auth)
-];
+const publicPages = ["/", "/login"];
+const productProtectedRoutes = {
+  "/secret/placement-service": ["placement-service"],
+  "/secret/quality-index": ["quality-index"],
+};
 
 const intlMiddleware = createIntlMiddleware({
   locales,
   defaultLocale: "en",
 });
 
-const authMiddleware = withAuth(
-  // Note that this callback is only invoked if
-  // the `authorized` callback has returned `true`
-  // and not for pages listed in `pages`.
-  (req) => intlMiddleware(req),
+export default withAuth(
+  function middleware(req) {
+    const publicPathnameRegex = RegExp(
+      `^(/(${locales.join("|")}))?(${publicPages.join("|")})?/?$`,
+      "i"
+    );
+    const isPublicPage = publicPathnameRegex.test(req.nextUrl.pathname);
+    if (isPublicPage) {
+      return intlMiddleware(req);
+    }
+
+    // Check if the current route requires specific products
+    const requiredProducts =
+      productProtectedRoutes[
+        req.nextUrl.pathname as keyof typeof productProtectedRoutes
+      ];
+
+    if (requiredProducts) {
+      const currentOrg = req?.nextauth?.token?.user?.organizations?.find(
+        (org) => org.id === req?.nextauth?.token?.user.selectedOrgId
+      );
+
+      if (!currentOrg) return new NextResponse("You are not authorized!");
+
+      const hasAccess = requiredProducts.every((product) =>
+        currentOrg.products.includes(product)
+      );
+
+      if (!hasAccess) {
+        return new NextResponse("You are not authorized!");
+      }
+
+      return intlMiddleware(req);
+    }
+  },
   {
     callbacks: {
-      authorized: ({ token }) => token != null,
+      authorized: ({ token }) => {
+        return !!token;
+      },
     },
     pages: {
       signIn: "/login",
@@ -29,21 +61,6 @@ const authMiddleware = withAuth(
   }
 );
 
-export default function middleware(req: NextRequest) {
-  const publicPathnameRegex = RegExp(
-    `^(/(${locales.join("|")}))?(${publicPages.join("|")})?/?$`,
-    "i"
-  );
-  const isPublicPage = publicPathnameRegex.test(req.nextUrl.pathname);
-
-  if (isPublicPage) {
-    return intlMiddleware(req);
-  } else {
-    return (authMiddleware as any)(req);
-  }
-}
-
 export const config = {
-  // Skip all paths that should not be internationalized
   matcher: ["/((?!api|_next|.*\\..*).*)"],
 };
